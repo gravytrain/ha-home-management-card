@@ -52,6 +52,7 @@ kids:
 | `calendar_entities` | `[]` | Calendar entities to combine into one chronological schedule. |
 | `days_ahead` | `7` | Number of upcoming days displayed. |
 | `kids` | `[]` | Child panels. Each includes `name`, optional `icon` and `accent`, plus optional To-do entities. |
+| `family_members` | `[]` | Optional household-presence cards. Each includes a `person_entity`, with optional `battery_entity`, `name`, and `icon`. |
 | `show_calendar` | `true` | Hide the shared schedule when desired. |
 | `show_chores` | `true` | Hide chore sections. |
 | `show_schoolwork` | `true` | Hide schoolwork sections. |

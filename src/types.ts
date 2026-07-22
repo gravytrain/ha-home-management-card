@@ -26,11 +26,19 @@ export interface ChildConfig {
   schoolwork_entity?: string;
 }
 
+export interface FamilyMemberConfig {
+  person_entity: string;
+  battery_entity?: string;
+  name?: string;
+  icon?: string;
+}
+
 export interface HomeManagementCardConfig {
   type: string;
   title?: string;
   calendar_entities?: string[];
   kids?: ChildConfig[];
+  family_members?: FamilyMemberConfig[];
   days_ahead?: number;
   show_calendar?: boolean;
   show_chores?: boolean;
