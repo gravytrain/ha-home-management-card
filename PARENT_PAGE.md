@@ -29,7 +29,7 @@ The **Today** and **Date** options work with any Home Assistant To-do list that 
 
 ## Manage assigned tasks
 
-The selected child and work type also show their current To-do list in the parent console. Use **Edit** beside a task to change its name or due date in place, or **Remove** to delete it from that child’s configured list. These controls use Home Assistant’s `todo.update_item` and `todo.remove_item` services, so they change the same list shown to the child.
+The selected child and work type also show their current To-do list in the parent console. Use **Edit** beside a task to change its name and choose the same Today, Date, Every day, or Weekly scheduling options used when adding a task. Choosing a repeating option converts the selected task into a managed recurring schedule. Use **Remove** to delete a task from that child’s configured list.
 
 ## Enable recurring schedules
 
