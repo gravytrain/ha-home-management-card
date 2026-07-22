@@ -2,7 +2,8 @@ import esbuild from 'esbuild';
 
 const watch = process.argv.includes('--watch');
 const options = {
-  entryPoints: ['src/home-management-card.ts'],
+  // HACS installs one resource, so it must register both the family and parent cards.
+  entryPoints: ['src/all-cards.ts'],
   bundle: true,
   outfile: 'dist/home-management-card.js',
   format: 'esm',

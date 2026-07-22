@@ -27,6 +27,10 @@ kids:
 
 The **Today** and **Date** options work with any Home Assistant To-do list that supports `todo.add_item` and due dates. Repeating options need the included companion integration, because recurrence must run on Home Assistant—not in a browser tab.
 
+## Manage assigned tasks
+
+The selected child and work type also show their current To-do list in the parent console. Use **Remove** beside any task to delete it from that child’s configured list. The control uses Home Assistant’s `todo.remove_item` service, so the task is removed from the same list shown to the child.
+
 ## Enable recurring schedules
 
 1. Copy `custom_components/home_management` from this repository into your Home Assistant `config/custom_components/` directory.
