@@ -18,7 +18,7 @@ export class HomeManagementCard extends LitElement {
       throw new Error('Add at least one calendar entity or child list to home-management-card.');
     }
     this._config = {
-      title: 'Home Ledger',
+      title: 'Home Base',
       calendar_entities: [],
       kids: [],
       family_members: [],
@@ -145,7 +145,7 @@ export class HomeManagementCard extends LitElement {
       <header class="masthead"><div><p class="eyebrow">FAMILY OPERATIONS</p><h1>${this._config.title}</h1><p class="date">${today}</p></div><button class="refresh" @click=${this._load} ?disabled=${this._loading} aria-label="Refresh dashboard">↻</button></header>
       ${this._config.show_calendar ? html`<section class="calendar panel"><div class="section-head"><div><p class="eyebrow">THE WEEK AHEAD</p><h2>Family schedule</h2></div><span class="count">${this._events.length} EVENTS</span></div><div class="events">${this._events.length ? this._events.slice(0, 8).map((event) => html`<div class="event"><span class="event-day">${this._day(event.start)}</span><div class="event-main"><strong>${event.summary || 'Untitled event'}</strong><small>${event.calendar}</small></div><span class="event-time">${this._time(event.start)}</span></div>`) : html`<p class="empty">No upcoming events on connected calendars.</p>`}</div></section>` : nothing}
       ${(this._config.family_members ?? []).length ? html`<section class="household panel"><div class="section-head"><div><p class="eyebrow">HOUSEHOLD PULSE</p><h2>Family status</h2></div><span class="count">${(this._config.family_members ?? []).filter((member) => this.hass?.states[member.person_entity]?.state === 'home').length} HOME</span></div><div class="member-grid">${(this._config.family_members ?? []).map((member) => this._member(member))}</div></section>` : nothing}
-      <section class="kids"><div class="section-head"><div><p class="eyebrow">TODAY'S LEDGER</p><h2>Children’s work</h2></div><span class="count">TAP TO CHECK OFF</span></div><div class="kid-grid">${(this._config.kids ?? []).map((kid, index) => this._kid(kid, index))}</div></section>
+      <section class="kids"><div class="section-head"><div><p class="eyebrow">TODAY'S PLAN</p><h2>Kids’ tasks</h2></div><span class="count">TAP TO CHECK OFF</span></div><div class="kid-grid">${(this._config.kids ?? []).map((kid, index) => this._kid(kid, index))}</div></section>
     </div></ha-card>`;
   }
 

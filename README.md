@@ -5,7 +5,7 @@ A cohesive family command-center card for Home Assistant: one shared calendar, c
 This is a custom Lovelace card, not an arrangement of native cards. The interface makes the day legible at a glance and keeps each child’s action area focused:
 
 - The shared schedule appears once at the top, sorted across every connected calendar.
-- Each child has an independent work ledger with progress, chores, and schoolwork.
+- Each child has an independent task board with progress, chores, and schoolwork.
 - A task is checked off directly in the card; it updates the corresponding native Home Assistant To-do list.
 - Completed tasks remain visible but subdued, so a child sees what they accomplished without it competing with what remains.
 
@@ -25,7 +25,7 @@ This is a custom Lovelace card, not an arrangement of native cards. The interfac
 
 ```yaml
 type: custom:home-management-card
-title: Home Ledger
+title: Home Base
 calendar_entities:
   - calendar.family
   - calendar.school
@@ -48,7 +48,7 @@ kids:
 
 | Option | Default | Purpose |
 | --- | --- | --- |
-| `title` | `Home Ledger` | The dashboard title. |
+| `title` | `Home Base` | The dashboard title. |
 | `calendar_entities` | `[]` | Calendar entities to combine into one chronological schedule. |
 | `days_ahead` | `7` | Number of upcoming days displayed. |
 | `kids` | `[]` | Child panels. Each includes `name`, optional `icon` and `accent`, plus optional To-do entities. |
