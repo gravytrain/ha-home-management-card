@@ -1,7 +1,7 @@
 {
   "domain": "home_management",
   "name": "Home Management",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "documentation": "https://github.com/example/ha-home-management-card",
   "issue_tracker": "https://github.com/example/ha-home-management-card/issues",
   "codeowners": [],
