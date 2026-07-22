@@ -1,0 +1,35 @@
+schedule_item:
+  name: Schedule item
+  description: Add a repeating household task that will be materialized into a Home Assistant to-do list each matching day.
+  fields:
+    list_entity:
+      required: true
+      selector:
+        entity:
+          domain: todo
+    item:
+      required: true
+      selector:
+        text:
+    recurrence:
+      required: true
+      selector:
+        select:
+          options:
+            - daily
+            - weekdays
+    weekdays:
+      selector:
+        select:
+          multiple: true
+          options:
+            - monday
+            - tuesday
+            - wednesday
+            - thursday
+            - friday
+            - saturday
+            - sunday
+run_schedules:
+  name: Run schedules
+  description: Materialize any repeating items due today. This normally runs automatically at Home Assistant startup and midnight.

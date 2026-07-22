@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Home Management Card — Demo</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: #0d0f13; color: #e7e3d8; font: 15px Inter, system-ui, sans-serif; }
+      main { width: min(100%, 1080px); margin: 0 auto; padding: 42px 20px 60px; }
+      .note { max-width: 760px; margin: 0 auto 24px; color: #9aa0ab; line-height: 1.55; }
+      .note b { color: #d9a441; font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: .08em; }
+      home-management-card { display: block; max-width: 900px; margin: auto; }
+    </style>
+    <script type="module" src="./dist/home-management-card.js"></script>
+  </head>
+  <body>
+    <main>
+      <p class="note"><b>INTERACTIVE DEMO</b><br>Tap any task to check it off. This uses the production bundle and a small in-browser Home Assistant mock—no data leaves your browser.</p>
+      <home-management-card id="demo"></home-management-card>
+    </main>
+    <script type="module">
+      const iso = (offset, hour = 9) => { const d = new Date(); d.setHours(hour, 0, 0, 0); d.setDate(d.getDate() + offset); return d.toISOString(); };
+      const lists = {
+        'todo.ada_chores': [
+          { uid: 'ada-bed', summary: 'Make bed', status: 'completed' },
+          { uid: 'ada-dog', summary: 'Feed the dog', status: 'needs_action' },
+          { uid: 'ada-room', summary: 'Tidy bedroom floor', status: 'needs_action' },
+        ],
+        'todo.ada_schoolwork': [
+          { uid: 'ada-reading', summary: 'Read 20 minutes', status: 'completed' },
+          { uid: 'ada-math', summary: 'Math worksheet', status: 'needs_action', due: iso(0).slice(0, 10) },
+        ],
+        'todo.theo_chores': [
+          { uid: 'theo-dishwasher', summary: 'Unload dishwasher', status: 'needs_action' },
+          { uid: 'theo-laundry', summary: 'Put away laundry', status: 'needs_action' },
+        ],
+        'todo.theo_schoolwork': [
+          { uid: 'theo-spelling', summary: 'Spelling practice', status: 'completed' },
+          { uid: 'theo-science', summary: 'Science project notes', status: 'needs_action' },
+        ],
+      };
+      const events = {
+        'calendar.family': [
+          { summary: 'Dentist — Ada', start: iso(0, 15) },
+          { summary: 'Family dinner at Nana’s', start: iso(2, 18) },
+        ],
+        'calendar.school': [
+          { summary: 'School pickup', start: iso(0, 14) },
+          { summary: 'Library books due', start: iso(4, 8) },
+        ],
+        'calendar.activities': [
+          { summary: 'Soccer practice', start: iso(1, 17) },
+          { summary: 'Piano lesson — Theo', start: iso(3, 16) },
+        ],
+      };
+      const hass = {
+        states: Object.fromEntries([
+          ...Object.keys(events).map((id) => [id, { state: 'on', attributes: { friendly_name: id.split('.')[1].replace(/^./, c => c.toUpperCase()) } }]),
+          ...Object.keys(lists).map((id) => [id, { state: '0', attributes: { friendly_name: id.split('.')[1].replaceAll('_', ' ') } }]),
+        ]),
+        async callWS(message) {
+          if (message.type === 'calendar/event/list') return events[message.entity_id] || [];
+          if (message.type === 'todo/item/list') return { items: lists[message.entity_id] || [] };
+          return {};
+        },
+        async callService(domain, service, data, target) {
+          if (domain === 'todo' && service === 'update_item') {
+            const item = lists[target.entity_id].find((entry) => entry.uid === data.item);
+            if (item) item.status = data.status;
+          }
+        },
+      };
+      const card = document.querySelector('#demo');
+      card.hass = hass;
+      card.setConfig({
+        type: 'custom:home-management-card', title: 'Home Ledger', days_ahead: 7,
+        calendar_entities: ['calendar.family', 'calendar.school', 'calendar.activities'],
+        kids: [
+          { name: 'Ada', icon: 'A', accent: '#d9a441', chores_entity: 'todo.ada_chores', schoolwork_entity: 'todo.ada_schoolwork' },
+          { name: 'Theo', icon: 'T', accent: '#6bbf7b', chores_entity: 'todo.theo_chores', schoolwork_entity: 'todo.theo_schoolwork' },
+        ],
+      });
+    </script>
+  </body>
+</html>
