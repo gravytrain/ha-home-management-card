@@ -12,6 +12,9 @@ export class HomeManagementCard extends LitElement {
   @state() private _events: Array<CalendarEvent & { calendar: string }> = [];
   @state() private _todos: TodoGroups = {};
   @state() private _loading = false;
+  @state() private _draggedItem: { entityId: string; item: TodoItem } | null = null;
+  @state() private _showTechTimeConfirm = false;
+  @state() private _techTimeChild: string | null = null;
 
   setConfig(config: HomeManagementCardConfig) {
     if (!config.kids?.length && !config.calendar_entities?.length) {
@@ -90,6 +93,8 @@ export class HomeManagementCard extends LitElement {
     if (raw.length === 10) return 'ALL DAY';
     return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(this._date(value));
   }
+  private _todayKey() { const value = new Date(); return String(value.getFullYear()) + '-' + String(value.getMonth() + 1).padStart(2, '0') + '-' + String(value.getDate()).padStart(2, '0'); }
+  private _isPastDue(item: TodoItem) { const due = item.due?.slice(0, 10); return !!due && due < this._todayKey(); }
   private _openItems(entity?: string) { return entity ? (this._todos[entity] ?? []).filter((item) => item.status !== 'completed') : []; }
   private _doneItems(entity?: string) { return entity ? (this._todos[entity] ?? []).filter((item) => item.status === 'completed') : []; }
   private _member(member: FamilyMemberConfig) {
@@ -101,41 +106,163 @@ export class HomeManagementCard extends LitElement {
     return html`<div class="member"><span class="member-avatar ${home ? 'home' : ''}">${member.icon || name.slice(0, 1)}</span><div class="member-main"><strong>${name}</strong><small>${location}</small></div>${battery && !Number.isNaN(Number(battery)) ? html`<span class="battery">${battery}%</span>` : nothing}</div>`;
   }
 
-  private async _toggle(entityId: string, item: TodoItem) {
+  private async _toggle(entityId: string, item: TodoItem, kidName?: string, enableNotifications?: boolean) {
     if (!this.hass) return;
     const completed = item.status === 'completed';
     this._todos = { ...this._todos, [entityId]: (this._todos[entityId] ?? []).map((entry) => entry.uid === item.uid ? { ...entry, status: completed ? 'needs_action' : 'completed' } : entry) };
     try {
       await this.hass.callService('todo', 'update_item', { item: item.uid, status: completed ? 'needs_action' : 'completed' }, { entity_id: entityId });
+
+      // Check if all tech-time items are complete after this toggle
+      if (!completed && item.tech_time && kidName && enableNotifications) {
+        this._checkTechTimeCompletion(kidName);
+      }
     } catch { await this._load(); }
   }
 
-  private _taskList(entityId: string | undefined, empty: string) {
-    if (!entityId) return html`<p class="empty">No list connected</p>`;
-    const open = this._openItems(entityId); const done = this._doneItems(entityId);
-    if (!open.length && !done.length) return html`<p class="empty">${empty}</p>`;
-    return html`${open.map((item) => this._task(entityId, item))}${done.map((item) => this._task(entityId, item))}`;
+  private _checkTechTimeCompletion(kidName: string) {
+    const kid = this._config.kids?.find(k => k.name === kidName);
+    if (!kid) return;
+
+    const allTechTimeItems = [
+      ...(this._todos[kid.chores_entity || ''] ?? []).filter(item => item.tech_time),
+      ...(this._todos[kid.schoolwork_entity || ''] ?? []).filter(item => item.tech_time),
+    ];
+
+    const allComplete = allTechTimeItems.length > 0 && allTechTimeItems.every(item => item.status === 'completed');
+
+    if (allComplete) {
+      this._techTimeChild = kidName;
+      this._showTechTimeConfirm = true;
+    }
   }
 
-  private _task(entityId: string, item: TodoItem) {
+  private async _sendTechTimeNotification() {
+    if (!this.hass || !this._techTimeChild) return;
+
+    try {
+      await this.hass.callService('notify', 'notify', {
+        message: `${this._techTimeChild} has completed all tech-time requirements!`,
+        title: 'Tech Time Earned',
+      });
+    } catch (error) {
+      console.error('Failed to send notification:', error);
+    }
+
+    this._showTechTimeConfirm = false;
+    this._techTimeChild = null;
+  }
+
+  private _cancelTechTimeNotification() {
+    this._showTechTimeConfirm = false;
+    this._techTimeChild = null;
+  }
+
+  private _taskList(entityId: string | undefined, empty: string, hidePastDue = false, kidName?: string, enableNotifications?: boolean) {
+    if (!entityId) return html`<p class="empty">No list connected</p>`;
+    const visible = (item: TodoItem) => !hidePastDue || !this._isPastDue(item);
+    const open = this._openItems(entityId).filter(visible).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const done = this._doneItems(entityId).filter(visible).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    if (!open.length && !done.length) return html`<p class="empty">${empty}</p>`;
+    return html`${open.map((item) => this._task(entityId, item, kidName, enableNotifications))}${done.map((item) => this._task(entityId, item, kidName, enableNotifications))}`;
+  }
+
+  private _task(entityId: string, item: TodoItem, kidName?: string, enableNotifications?: boolean) {
     const done = item.status === 'completed';
-    return html`<button class="task ${done ? 'complete' : ''}" @click=${() => this._toggle(entityId, item)} aria-pressed=${done} aria-label="Mark ${item.summary} ${done ? 'not complete' : 'complete'}">
-      <span class="check">${done ? '✓' : ''}</span><span class="task-name">${item.summary}</span>${item.due ? html`<span class="due">${item.due.slice(0, 10)}</span>` : nothing}
+    return html`<button
+      class="task ${done ? 'complete' : ''} ${item.tech_time ? 'tech-time' : ''}"
+      @click=${() => this._toggle(entityId, item, kidName, enableNotifications)}
+      @dragstart=${(e: DragEvent) => this._handleDragStart(e, entityId, item)}
+      @dragover=${(e: DragEvent) => this._handleDragOver(e)}
+      @drop=${(e: DragEvent) => this._handleDrop(e, entityId, item)}
+      @dragend=${() => this._handleDragEnd()}
+      draggable="true"
+      aria-pressed=${done}
+      aria-label="Mark ${item.summary} ${done ? 'not complete' : 'complete'}">
+      <span class="drag-handle">⋮⋮</span>
+      <span class="check">${done ? '✓' : ''}</span>
+      <span class="task-name">${item.summary}</span>
+      ${item.tech_time ? html`<span class="tech-badge">⚡</span>` : nothing}
+      ${item.due ? html`<span class="due">${item.due.slice(0, 10)}</span>` : nothing}
     </button>`;
   }
 
+  private _handleDragStart(e: DragEvent, entityId: string, item: TodoItem) {
+    this._draggedItem = { entityId, item };
+    e.dataTransfer!.effectAllowed = 'move';
+    (e.target as HTMLElement).classList.add('dragging');
+  }
+
+  private _handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = 'move';
+  }
+
+  private async _handleDrop(e: DragEvent, targetEntityId: string, targetItem: TodoItem) {
+    e.preventDefault();
+    if (!this._draggedItem || this._draggedItem.entityId !== targetEntityId) return;
+
+    const items = [...(this._todos[targetEntityId] ?? [])];
+    const draggedIndex = items.findIndex(item => item.uid === this._draggedItem!.item.uid);
+    const targetIndex = items.findIndex(item => item.uid === targetItem.uid);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    // Reorder items
+    const [removed] = items.splice(draggedIndex, 1);
+    items.splice(targetIndex, 0, removed);
+
+    // Update order property
+    const updatedItems = items.map((item, index) => ({ ...item, order: index }));
+
+    this._todos = { ...this._todos, [targetEntityId]: updatedItems };
+
+    // Persist order to Home Assistant
+    try {
+      for (const item of updatedItems) {
+        await this.hass!.callService('todo', 'update_item', {
+          item: item.uid,
+          description: JSON.stringify({ order: item.order, tech_time: item.tech_time }),
+        }, { entity_id: targetEntityId });
+      }
+    } catch (error) {
+      console.error('Failed to update item order:', error);
+      await this._load();
+    }
+  }
+
+  private _handleDragEnd() {
+    this._draggedItem = null;
+    this.shadowRoot?.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+  }
+
   private _kid(kid: ChildConfig, index: number) {
-    const choreOpen = this._openItems(kid.chores_entity); const choreDone = this._doneItems(kid.chores_entity);
+    const choreOpen = this._openItems(kid.chores_entity).filter((item) => !this._isPastDue(item)); const choreDone = this._doneItems(kid.chores_entity).filter((item) => !this._isPastDue(item));
     const schoolOpen = this._openItems(kid.schoolwork_entity); const schoolDone = this._doneItems(kid.schoolwork_entity);
     const total = choreOpen.length + choreDone.length + schoolOpen.length + schoolDone.length;
     const complete = choreDone.length + schoolDone.length;
     const progress = total ? Math.round((complete / total) * 100) : 0;
     const accent = kid.accent || ['#d9a441', '#6bbf7b', '#5b9bd5', '#a681c4'][index % 4];
+
+    // Count tech-time items
+    const techTimeChores = [...choreOpen, ...choreDone].filter(item => item.tech_time);
+    const techTimeSchool = [...schoolOpen, ...schoolDone].filter(item => item.tech_time);
+    const techTimeComplete = [...techTimeChores, ...techTimeSchool].filter(item => item.status === 'completed').length;
+    const techTimeTotal = techTimeChores.length + techTimeSchool.length;
+
     return html`<article class="kid" style=${`--kid-accent:${accent}`}>
-      <header class="kid-head"><div class="avatar">${kid.icon || kid.name.slice(0, 1)}</div><div><h3>${kid.name}</h3><p>${complete} OF ${total} COMPLETE</p></div><div class="progress" aria-label="${progress}% complete"><span>${progress}%</span></div></header>
+      <header class="kid-head">
+        <div class="avatar">${kid.icon || kid.name.slice(0, 1)}</div>
+        <div>
+          <h3>${kid.name}</h3>
+          <p>${complete} OF ${total} COMPLETE</p>
+          ${techTimeTotal > 0 ? html`<p class="tech-time-status">⚡ ${techTimeComplete}/${techTimeTotal} tech-time</p>` : nothing}
+        </div>
+        <div class="progress" aria-label="${progress}% complete"><span>${progress}%</span></div>
+      </header>
       <div class="progress-track"><i style=${`width:${progress}%`}></i></div>
-      ${this._config.show_chores ? html`<section class="task-section"><h4>DAILY CHORES <span>${choreDone.length}/${choreOpen.length + choreDone.length}</span></h4>${this._taskList(kid.chores_entity, 'All chores are complete.')}</section>` : nothing}
-      ${this._config.show_schoolwork ? html`<section class="task-section"><h4>SCHOOLWORK <span>${schoolDone.length}/${schoolOpen.length + schoolDone.length}</span></h4>${this._taskList(kid.schoolwork_entity, 'No schoolwork due.')}</section>` : nothing}
+      ${this._config.show_chores ? html`<section class="task-section"><h4>DAILY CHORES <span>${choreDone.length}/${choreOpen.length + choreDone.length}</span></h4>${this._taskList(kid.chores_entity, 'All chores are complete.', true, kid.name, kid.enable_tech_time_notifications)}</section>` : nothing}
+      ${this._config.show_schoolwork ? html`<section class="task-section"><h4>SCHOOLWORK <span>${schoolDone.length}/${schoolOpen.length + schoolDone.length}</span></h4>${this._taskList(kid.schoolwork_entity, 'No schoolwork due.', false, kid.name, kid.enable_tech_time_notifications)}</section>` : nothing}
     </article>`;
   }
 
@@ -143,9 +270,26 @@ export class HomeManagementCard extends LitElement {
     const today = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date());
     return html`<ha-card><div class="shell">
       <header class="masthead"><div><p class="eyebrow">FAMILY OPERATIONS</p><h1>${this._config.title}</h1><p class="date">${today}</p></div><button class="refresh" @click=${this._load} ?disabled=${this._loading} aria-label="Refresh dashboard">↻</button></header>
+
+      <section class="kids"><div class="section-head"><div><p class="eyebrow">TODAY'S PLAN</p><h2>Kids' tasks</h2></div><span class="count">TAP TO CHECK OFF</span></div><div class="kid-grid">${(this._config.kids ?? []).map((kid, index) => this._kid(kid, index))}</div></section>
+
       ${this._config.show_calendar ? html`<section class="calendar panel"><div class="section-head"><div><p class="eyebrow">THE WEEK AHEAD</p><h2>Family schedule</h2></div><span class="count">${this._events.length} EVENTS</span></div><div class="events">${this._events.length ? this._events.slice(0, 8).map((event) => html`<div class="event"><span class="event-day">${this._day(event.start)}</span><div class="event-main"><strong>${event.summary || 'Untitled event'}</strong><small>${event.calendar}</small></div><span class="event-time">${this._time(event.start)}</span></div>`) : html`<p class="empty">No upcoming events on connected calendars.</p>`}</div></section>` : nothing}
+
       ${(this._config.family_members ?? []).length ? html`<section class="household panel"><div class="section-head"><div><p class="eyebrow">HOUSEHOLD PULSE</p><h2>Family status</h2></div><span class="count">${(this._config.family_members ?? []).filter((member) => this.hass?.states[member.person_entity]?.state === 'home').length} HOME</span></div><div class="member-grid">${(this._config.family_members ?? []).map((member) => this._member(member))}</div></section>` : nothing}
-      <section class="kids"><div class="section-head"><div><p class="eyebrow">TODAY'S PLAN</p><h2>Kids’ tasks</h2></div><span class="count">TAP TO CHECK OFF</span></div><div class="kid-grid">${(this._config.kids ?? []).map((kid, index) => this._kid(kid, index))}</div></section>
+
+      ${this._showTechTimeConfirm ? html`
+        <div class="modal-backdrop" @click=${this._cancelTechTimeNotification}>
+          <div class="modal" @click=${(e: Event) => e.stopPropagation()}>
+            <h2>🎉 Tech Time Earned!</h2>
+            <p>${this._techTimeChild} has completed all tech-time requirements.</p>
+            <p>Send a notification?</p>
+            <div class="modal-actions">
+              <button class="btn-cancel" @click=${this._cancelTechTimeNotification}>Not Now</button>
+              <button class="btn-confirm" @click=${this._sendTechTimeNotification}>Send Notification</button>
+            </div>
+          </div>
+        </div>
+      ` : nothing}
     </div></ha-card>`;
   }
 
@@ -166,8 +310,16 @@ export class HomeManagementCard extends LitElement {
     .kid-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; margin-top: 14px; } .kid { overflow: hidden; } .kid-head { padding: 16px 16px 12px; justify-content: flex-start; } .avatar { display: grid; place-items: center; flex: 0 0 38px; width: 38px; height: 38px; border-radius: 50%; background: color-mix(in srgb, var(--kid-accent) 20%, var(--well)); color: var(--kid-accent); border: 1px solid var(--kid-accent); font-family: var(--font-display); font-size: 19px; } .kid-head p { color: var(--ink-faint); margin-top: 3px; }
     .progress { margin-left: auto; display: grid; place-items: center; width: 42px; height: 42px; border: 3px solid var(--kid-accent); border-radius: 50%; color: var(--kid-accent); font: 700 10px var(--font-mono); } .progress-track { height: 3px; background: var(--well); } .progress-track i { display: block; height: 100%; background: var(--kid-accent); transition: width .35s ease; }
     .task-section { padding: 14px 16px 4px; } .task-section + .task-section { border-top: 1px solid var(--hairline); padding-top: 14px; } h4 { display: flex; justify-content: space-between; color: var(--ink-dim); margin-bottom: 8px; } h4 span { color: var(--kid-accent); }
-    .task { display: flex; align-items: center; width: 100%; gap: 9px; padding: 9px 0; color: var(--ink); background: none; border: 0; border-top: 1px solid #333a4460; font: 14px var(--font-body); text-align: left; cursor: pointer; } .task:first-of-type { border-top: 0; } .task:hover .task-name { color: var(--kid-accent); } .check { display: grid; place-items: center; flex: 0 0 17px; width: 17px; height: 17px; border: 1px solid var(--ink-faint); border-radius: 3px; color: var(--housing); font: 800 12px var(--font-mono); } .complete .check { background: var(--ledger); border-color: var(--ledger); } .complete .task-name { color: var(--ink-faint); text-decoration: line-through; } .due { margin-left: auto; color: var(--brass-dim); font-size: 9px; } .empty { padding: 8px 0 13px; color: var(--ink-faint); font-size: 13px; }
-    @media (max-width: 480px) { .shell { padding: 16px; } .event-day { min-width: 62px; font-size: 9px; } .event-time { font-size: 9px; } .section-head { align-items: flex-end; } }
+    .task { display: flex; align-items: center; width: 100%; gap: 9px; padding: 9px 0; color: var(--ink); background: none; border: 0; border-top: 1px solid #333a4460; font: 14px var(--font-body); text-align: left; cursor: pointer; position: relative; } .task:first-of-type { border-top: 0; } .task:hover .task-name { color: var(--kid-accent); } .task.dragging { opacity: 0.5; } .drag-handle { color: var(--ink-faint); font-size: 12px; cursor: grab; margin-right: -3px; } .drag-handle:active { cursor: grabbing; } .check { display: grid; place-items: center; flex: 0 0 17px; width: 17px; height: 17px; border: 1px solid var(--ink-faint); border-radius: 3px; color: var(--housing); font: 800 12px var(--font-mono); } .complete .check { background: var(--ledger); border-color: var(--ledger); } .complete .task-name { color: var(--ink-faint); text-decoration: line-through; } .tech-badge { display: inline-block; padding: 2px 6px; background: color-mix(in srgb, var(--kid-accent) 20%, transparent); color: var(--kid-accent); border: 1px solid var(--kid-accent); border-radius: 4px; font-size: 10px; margin-left: auto; } .due { margin-left: 8px; color: var(--brass-dim); font-size: 9px; } .empty { padding: 8px 0 13px; color: var(--ink-faint); font-size: 13px; }
+    .tech-time-status { color: var(--kid-accent); font-size: 9px; margin-top: 2px; }
+    .modal-backdrop { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); display: grid; place-items: center; z-index: 1000; animation: fadeIn 0.2s ease; } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .modal { background: var(--panel); border: 2px solid var(--brass); border-radius: 12px; padding: 28px; max-width: 400px; text-align: center; animation: slideUp 0.3s ease; } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .modal h2 { margin: 0 0 16px; color: var(--ink); font-size: 24px; } .modal p { color: var(--ink-dim); margin: 8px 0; font-size: 14px; }
+    .modal-actions { display: flex; gap: 12px; margin-top: 24px; justify-content: center; }
+    .modal-actions button { padding: 12px 24px; border-radius: 8px; font: 700 13px var(--font-mono); letter-spacing: .08em; cursor: pointer; border: none; transition: all 0.2s ease; }
+    .btn-cancel { background: var(--well); color: var(--ink-dim); border: 1px solid var(--bezel); } .btn-cancel:hover { background: var(--housing); }
+    .btn-confirm { background: var(--brass); color: var(--housing); border: 1px solid var(--brass); } .btn-confirm:hover { background: var(--ledger); border-color: var(--ledger); }
+    @media (max-width: 480px) { .shell { padding: 16px; } .event-day { min-width: 62px; font-size: 9px; } .event-time { font-size: 9px; } .section-head { align-items: flex-end; } .modal { padding: 20px; max-width: 320px; } }
   `];
 }
 

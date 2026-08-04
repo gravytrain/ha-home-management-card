@@ -9,6 +9,8 @@ export interface TodoItem {
   status: 'needs_action' | 'completed' | string;
   due?: string;
   description?: string;
+  tech_time?: boolean;
+  order?: number;
 }
 
 export interface CalendarEvent {
@@ -24,6 +26,7 @@ export interface ChildConfig {
   accent?: string;
   chores_entity?: string;
   schoolwork_entity?: string;
+  enable_tech_time_notifications?: boolean;
 }
 
 export interface FamilyMemberConfig {

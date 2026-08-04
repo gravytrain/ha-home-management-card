@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home Management Card - Tech Time Demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      padding: 20px;
+      margin: 0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #d9a441;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .demo-section {
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .demo-section h2 {
+      color: #d9a441;
+      font-size: 18px;
+      margin-top: 0;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-family: 'Courier New', monospace;
+    }
+    .feature-list {
+      list-style: none;
+      padding: 0;
+    }
+    .feature-list li {
+      padding: 12px 0;
+      border-bottom: 1px solid #3a3a3a;
+    }
+    .feature-list li:last-child {
+      border-bottom: none;
+    }
+    .feature-title {
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .feature-desc {
+      color: #999;
+      font-size: 14px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: rgba(217, 164, 65, 0.2);
+      color: #d9a441;
+      border: 1px solid #d9a441;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .tech-badge {
+      font-size: 14px;
+    }
+    .mockup {
+      background: #1a1a1a;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+    }
+    .mockup-line {
+      padding: 4px 0;
+      color: #999;
+    }
+    .mockup-line.highlight {
+      color: #6bbf7b;
+    }
+    .mockup-line.new {
+      color: #d9a441;
+      font-weight: 700;
+    }
+    code {
+      background: #1a1a1a;
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: #6bbf7b;
+      font-family: 'Courier New', monospace;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .card-title {
+      color: #d9a441;
+      font-weight: 700;
+      margin-bottom: 8px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .card-content {
+      color: #e0e0e0;
+      font-size: 14px;
+    }
+    .drag-handle {
+      color: #666;
+      cursor: grab;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🏠 Home Management Card - New Features</h1>
+
+    <div class="demo-section">
+      <h2>✨ Key Enhancements</h2>
+      <ul class="feature-list">
+        <li>
+          <div class="feature-title">
+            <span>⚡</span>
+            <span>Tech Time Tracking</span>
+            <span class="badge">NEW</span>
+          </div>
+          <div class="feature-desc">
+            Mark tasks as tech-time requirements. When all are complete, get a notification prompt.
+          </div>
+        </li>
+        <li>
+          <div class="feature-title">
+            <span class="drag-handle">⋮⋮</span>
+            <span>Drag-and-Drop Reordering</span>
+            <span class="badge">NEW</span>
+          </div>
+          <div class="feature-desc">
+            Reorder tasks within each list by dragging. Order persists across sessions.
+          </div>
+        </li>
+        <li>
+          <div class="feature-title">
+            <span>📐</span>
+            <span>Improved Layout</span>
+            <span class="badge">UPDATED</span>
+          </div>
+          <div class="feature-desc">
+            Kids' tasks appear first, followed by calendar, then household status.
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="demo-section">
+      <h2>⚡ Tech Time Feature</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="card-title">In Main Card</div>
+          <div class="card-content">
+            <ul style="margin: 8px 0; padding-left: 20px; color: #999;">
+              <li>Tasks show <span class="tech-badge">⚡</span> badge</li>
+              <li>Progress: "⚡ 3/5 tech-time"</li>
+              <li>Modal on completion</li>
+              <li>Optional notifications</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">In Parent Console</div>
+          <div class="card-content">
+            <ul style="margin: 8px 0; padding-left: 20px; color: #999;">
+              <li>Checkbox: "⚡ Required for tech time"</li>
+              <li>Badge in task lists</li>
+              <li>Works with all scheduling modes</li>
+              <li>Editable anytime</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-line new">kids:</div>
+        <div class="mockup-line">  - name: Ada</div>
+        <div class="mockup-line">    chores_entity: todo.ada_chores</div>
+        <div class="mockup-line">    schoolwork_entity: todo.ada_schoolwork</div>
+        <div class="mockup-line highlight">    enable_tech_time_notifications: true  # Enable feature</div>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <h2>🔄 Drag-and-Drop Reordering</h2>
+      <p style="color: #999; margin-bottom: 16px;">
+        Each task now has a drag handle (<span class="drag-handle">⋮⋮</span>) that allows reordering within the same list section.
+      </p>
+      <div class="grid">
+        <div class="card">
+          <div class="card-title">How It Works</div>
+          <div class="card-content">
+            <ol style="margin: 8px 0; padding-left: 20px; color: #999;">
+              <li>Grab the <span class="drag-handle">⋮⋮</span> handle</li>
+              <li>Drag to new position</li>
+              <li>Drop in place</li>
+              <li>Order auto-saves to HA</li>
+            </ol>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Features</div>
+          <div class="card-content">
+            <ul style="margin: 8px 0; padding-left: 20px; color: #999;">
+              <li>Visual feedback during drag</li>
+              <li>Persists across sessions</li>
+              <li>Works on all devices</li>
+              <li>Within-list only (safe)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <h2>📐 UI Layout Changes</h2>
+      <p style="color: #999; margin-bottom: 16px;">
+        The card sections have been reordered to prioritize the children's daily tasks:
+      </p>
+      <div class="mockup">
+        <div class="mockup-line highlight">1. Kids' Tasks Section  ← Now appears FIRST</div>
+        <div class="mockup-line">   ├─ Ada's chores & schoolwork</div>
+        <div class="mockup-line">   ├─ Theo's chores & schoolwork</div>
+        <div class="mockup-line">   └─ Tech-time progress indicators</div>
+        <div class="mockup-line"></div>
+        <div class="mockup-line">2. Family Calendar Section  ← Moved to MIDDLE</div>
+        <div class="mockup-line">   └─ Upcoming events from all calendars</div>
+        <div class="mockup-line"></div>
+        <div class="mockup-line">3. Household Pulse Section  ← Moved to BOTTOM</div>
+        <div class="mockup-line">   └─ Family member locations & battery levels</div>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <h2>🚀 Getting Started</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="card-title">Step 1: Update Config</div>
+          <div class="card-content">
+            Add <code>enable_tech_time_notifications: true</code> to each child's config in your dashboard YAML.
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Step 2: Mark Tasks</div>
+          <div class="card-content">
+            Use the Parent Console to check "⚡ Required for tech time" when adding or editing tasks.
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Step 3: Test It Out</div>
+          <div class="card-content">
+            Complete all tech-time tasks for a child and watch for the notification prompt!
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <h2>📋 Data Storage</h2>
+      <p style="color: #999; margin-bottom: 8px;">
+        Tech-time and order metadata are stored in each task's <code>description</code> field as JSON:
+      </p>
+      <div class="mockup">
+        <div class="mockup-line">{</div>
+        <div class="mockup-line highlight">  "tech_time": true,</div>
+        <div class="mockup-line highlight">  "order": 2</div>
+        <div class="mockup-line">}</div>
+      </div>
+      <p style="color: #999; margin-top: 12px; font-size: 13px;">
+        This approach works with standard Home Assistant todo entities without requiring custom fields.
+      </p>
+    </div>
+
+    <div class="demo-section">
+      <h2>🔗 Useful Links</h2>
+      <ul class="feature-list">
+        <li>
+          <div class="feature-title">📖 README.md</div>
+          <div class="feature-desc">Complete configuration guide and examples</div>
+        </li>
+        <li>
+          <div class="feature-title">📝 PARENT_PAGE.md</div>
+          <div class="feature-desc">Parent Console setup and usage instructions</div>
+        </li>
+        <li>
+          <div class="feature-title">🔄 CHANGES.md</div>
+          <div class="feature-desc">Detailed technical changelog and migration guide</div>
+        </li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

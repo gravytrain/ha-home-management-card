@@ -4,8 +4,11 @@ A cohesive family command-center card for Home Assistant: one shared calendar, c
 
 This is a custom Lovelace card, not an arrangement of native cards. The interface makes the day legible at a glance and keeps each child’s action area focused:
 
-- The shared schedule appears once at the top, sorted across every connected calendar.
-- Each child has an independent task board with progress, chores, and schoolwork.
+- Each child’s task board appears first with progress, chores, and schoolwork.
+- The shared schedule follows, sorted across every connected calendar.
+- The household status pulse appears last, showing who’s home and battery levels.
+- Tasks can be reordered via drag-and-drop for custom prioritization.
+- Tasks marked as "tech time" requirements trigger optional completion notifications.
 - A task is checked off directly in the card; it updates the corresponding native Home Assistant To-do list.
 - Completed tasks remain visible but subdued, so a child sees what they accomplished without it competing with what remains.
 
@@ -37,11 +40,13 @@ kids:
     accent: '#d9a441'
     chores_entity: todo.ada_chores
     schoolwork_entity: todo.ada_schoolwork
+    enable_tech_time_notifications: true
   - name: Theo
     icon: T
     accent: '#6bbf7b'
     chores_entity: todo.theo_chores
     schoolwork_entity: todo.theo_schoolwork
+    enable_tech_time_notifications: true
 ```
 
 ## Options
@@ -51,13 +56,46 @@ kids:
 | `title` | `Home Base` | The dashboard title. |
 | `calendar_entities` | `[]` | Calendar entities to combine into one chronological schedule. |
 | `days_ahead` | `7` | Number of upcoming days displayed. |
-| `kids` | `[]` | Child panels. Each includes `name`, optional `icon` and `accent`, plus optional To-do entities. |
+| `kids` | `[]` | Child panels. Each includes `name`, optional `icon` and `accent`, plus optional To-do entities and `enable_tech_time_notifications`. |
 | `family_members` | `[]` | Optional household-presence cards. Each includes a `person_entity`, with optional `battery_entity`, `name`, and `icon`. |
 | `show_calendar` | `true` | Hide the shared schedule when desired. |
 | `show_chores` | `true` | Hide chore sections. |
 | `show_schoolwork` | `true` | Hide schoolwork sections. |
 
+### Child Configuration Options
+
+Each child in the `kids` array supports:
+
+| Option | Required | Purpose |
+| --- | --- | --- |
+| `name` | Yes | The child's display name. |
+| `icon` | No | Custom icon or initial to display. Defaults to first letter of name. |
+| `accent` | No | Hex color for the child's accent color. Auto-assigned from palette if omitted. |
+| `chores_entity` | No | Todo list entity for daily chores. |
+| `schoolwork_entity` | No | Todo list entity for schoolwork. |
+| `enable_tech_time_notifications` | No | Enable popup confirmation when all tech-time tasks are complete. Defaults to `false`. |
+
 The card gracefully handles an empty or not-yet-connected list. Configure only the categories you use; for example, omit `schoolwork_entity` during summer break.
+
+## Tech Time Feature
+
+Tasks can be marked as "tech time" requirements in the Parent Console (admin card). When all tech-time tasks for a child are completed:
+
+1. A modal appears asking if you want to send a notification
+2. If confirmed, a Home Assistant notification is sent to the `notify.notify` service
+3. Tasks marked as tech-time show a ⚡ badge in both the main card and admin card
+
+To use this feature:
+
+1. Set `enable_tech_time_notifications: true` for each child in the card config
+2. In the Parent Console, check the "⚡ Required for tech time" box when adding or editing tasks
+3. When the child completes all tech-time tasks, you'll be prompted to send a notification
+
+The tech-time counter appears below each child's name showing progress (e.g., "⚡ 3/5 tech-time").
+
+## Drag-and-Drop Reordering
+
+Tasks can be reordered by dragging and dropping within each list section. The order is automatically persisted to Home Assistant and will be maintained across sessions. This allows you to prioritize tasks or group related items together.
 
 ## Development
 

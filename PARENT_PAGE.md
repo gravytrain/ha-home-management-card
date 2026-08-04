@@ -29,7 +29,9 @@ The **Today** and **Date** options work with any Home Assistant To-do list that 
 
 ## Manage assigned tasks
 
-The selected child and work type also show their current To-do list in the parent console. Use **Edit** beside a task to change its name and choose the same Today, Date, Every day, or Weekly scheduling options used when adding a task. Choosing a repeating option converts the selected task into a managed recurring schedule. Use **Remove** to delete a task from that child’s configured list.
+The selected child and work type also show their current To-do list in the parent console. Use **Edit** beside a task to change its name, toggle tech-time requirement, and choose the same Today, Date, Every day, or Weekly scheduling options used when adding a task. Choosing a repeating option converts the selected task into a managed recurring schedule. Use **Remove** to delete a task from that child’s configured list.
+
+Tasks marked with the "⚡ Required for tech time" checkbox will display a lightning badge and count toward the child’s tech-time progress. When all tech-time tasks are completed, the family page can send an optional notification (if enabled in the card configuration).
 
 ## Enable recurring schedules
 
