@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { tokens } from './styles.js';
+import { hydrateTodoItems } from './todo-metadata.js';
 import type { CalendarEvent, ChildConfig, FamilyMemberConfig, HomeAssistant, HomeManagementCardConfig, TodoItem } from './types.js';
 
 type TodoGroups = Record<string, TodoItem[]>;
@@ -63,7 +64,7 @@ export class HomeManagementCard extends LitElement {
         Promise.all(listIds.map(async (entityId) => {
           try {
             const result = await this.hass!.callWS<{ items?: TodoItem[] }>({ type: 'todo/item/list', entity_id: entityId });
-            return [entityId, result.items ?? []] as const;
+            return [entityId, hydrateTodoItems(result.items ?? [])] as const;
           } catch { return [entityId, []] as const; }
         })),
       ]);

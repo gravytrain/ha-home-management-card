@@ -1,5 +1,6 @@
 // Use Home Assistant's one-shot WebSocket service protocol for calendar data.
 import './calendar-service-entry.js';
+import { hydrateTodoItems } from './todo-metadata.js';
 
 type Card = HTMLElement & { [key: string]: any };
 
@@ -30,7 +31,9 @@ function patchCalendarLoading() {
         Promise.all(listIds.map(async (entityId: string) => {
           try {
             const result = await this.hass.callWS({ type: 'todo/item/list', entity_id: entityId });
-            return [entityId, result.items ?? []] as const;
+            // Decode tech_time/order out of each item's description, or the card's
+            // order-based sort and ⚡ badges see undefined and silently no-op.
+            return [entityId, hydrateTodoItems(result.items ?? [])] as const;
           } catch { return [entityId, []] as const; }
         })),
       ]);

@@ -1,6 +1,7 @@
 // Calendar event retrieval changed in Home Assistant; use the supported
 // calendar.get_events action (with its response) instead of a retired WS call.
 import './spacious-entry.js';
+import { hydrateTodoItems } from './todo-metadata.js';
 
 type CalendarResponse = Record<string, { events?: unknown[] }>;
 type Card = HTMLElement & { [key: string]: any };
@@ -34,7 +35,9 @@ function patchCalendarLoading() {
         Promise.all(listIds.map(async (entityId: string) => {
           try {
             const result = await this.hass.callWS({ type: 'todo/item/list', entity_id: entityId });
-            return [entityId, result.items ?? []] as const;
+            // Decode tech_time/order out of each item's description, or the card's
+            // order-based sort and ⚡ badges see undefined and silently no-op.
+            return [entityId, hydrateTodoItems(result.items ?? [])] as const;
           } catch { return [entityId, []] as const; }
         })),
       ]);

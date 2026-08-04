@@ -1,6 +1,6 @@
 {
   "name": "ha-home-management-card",
-  "version": "0.1.7",
+  "version": "0.2.2",
   "description": "A family calendar, chores, and schoolwork dashboard card for Home Assistant",
   "type": "module",
   "scripts": {
