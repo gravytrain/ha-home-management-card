@@ -32,6 +32,12 @@ export class HomeManagementAdminCard extends LitElement {
   @state() private _techTime = false;
   @state() private _editTechTime = false;
   @state() private _draggedItem: TodoItem | null = null;
+  /** uid of the row the cursor is currently over, and which edge it would land on. */
+  @state() private _dragOverUid: string | null = null;
+  @state() private _dropPosition: 'before' | 'after' = 'before';
+  /** uid of the row that just landed, so it can flash to confirm the move. */
+  @state() private _justMovedUid: string | null = null;
+  @state() private _savingOrder = false;
 
   setConfig(config: HomeManagementCardConfig) {
     if (!config.kids?.length) throw new Error('Add one or more kids to home-management-admin-card.');
@@ -138,51 +144,87 @@ export class HomeManagementAdminCard extends LitElement {
   private _handleDragStart(e: DragEvent, item: TodoItem) {
     this._draggedItem = item;
     e.dataTransfer!.effectAllowed = 'move';
-    (e.target as HTMLElement).classList.add('dragging');
+    // Some browsers cancel a drag that carries no payload.
+    e.dataTransfer!.setData('text/plain', item.uid);
+    // Drag the whole row as the ghost image, not the tiny handle glyph, so it is
+    // obvious which task is in flight. The handle sits ~14px into the row.
+    const row = (e.currentTarget as HTMLElement).closest('.item');
+    if (row) e.dataTransfer!.setDragImage(row, 14, row.clientHeight / 2);
   }
-  private _handleDragOver(e: DragEvent) {
+  private _handleDragOver(e: DragEvent, targetItem: TodoItem) {
     e.preventDefault();
     e.dataTransfer!.dropEffect = 'move';
+    if (!this._draggedItem || this._draggedItem.uid === targetItem.uid) {
+      this._dragOverUid = null;
+      return;
+    }
+    // Pick the nearer edge of the hovered row so the indicator shows exactly
+    // where the task will land instead of always implying "above".
+    const bounds = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    this._dropPosition = e.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after';
+    this._dragOverUid = targetItem.uid;
+  }
+  private _handleDragLeave(e: DragEvent, targetItem: TodoItem) {
+    // Ignore moves onto child elements, which also fire dragleave on the row.
+    const related = e.relatedTarget as Node | null;
+    if (related && (e.currentTarget as HTMLElement).contains(related)) return;
+    if (this._dragOverUid === targetItem.uid) this._dragOverUid = null;
   }
   private async _handleDrop(e: DragEvent, targetItem: TodoItem) {
     e.preventDefault();
+    const dropPosition = this._dropPosition;
+    this._dragOverUid = null;
     if (!this._draggedItem || this._draggedItem.uid === targetItem.uid) return;
 
-    const items = [...this._items];
+    const previousItems = this._items;
+    const items = [...previousItems];
     const draggedIndex = items.findIndex(item => item.uid === this._draggedItem!.uid);
     const targetIndex = items.findIndex(item => item.uid === targetItem.uid);
-
     if (draggedIndex === -1 || targetIndex === -1) return;
 
-    // Reorder items
     const [removed] = items.splice(draggedIndex, 1);
-    items.splice(targetIndex, 0, removed);
+    // Recompute the target after removal — pulling the dragged row out shifts
+    // every later index down by one.
+    const insertAfterIndex = items.findIndex(item => item.uid === targetItem.uid);
+    items.splice(dropPosition === 'before' ? insertAfterIndex : insertAfterIndex + 1, 0, removed);
 
-    // Update order property
     const updatedItems = items.map((item, index) => ({ ...item, order: index }));
     this._items = updatedItems;
+    this._flashMoved(removed.uid);
 
-    // Persist order to Home Assistant
     const entityId = this._entity();
     if (!this.hass || !entityId) return;
 
+    // Only rewrite rows whose position actually changed; a full-list write costs
+    // one service call per task on every drag.
+    const previousOrder = new Map(previousItems.map((item, index) => [item.uid, item.order ?? index]));
+    const changedItems = updatedItems.filter(item => previousOrder.get(item.uid) !== item.order);
+
+    this._savingOrder = true;
+    this._message = 'Saving new order…';
     try {
-      for (const item of updatedItems) {
-        await this.hass.callService('todo', 'update_item', {
-          item: item.uid,
-          description: JSON.stringify({ order: item.order, tech_time: item.tech_time }),
-        }, { entity_id: entityId });
-      }
-      this._message = 'Task order updated.';
+      await Promise.all(changedItems.map(item => this.hass!.callService('todo', 'update_item', {
+        item: item.uid,
+        description: JSON.stringify({ order: item.order, tech_time: item.tech_time }),
+      }, { entity_id: entityId })));
+      this._message = 'Moved “' + removed.summary + '”.';
     } catch (error) {
       console.error('Failed to update item order:', error);
       this._message = 'Could not reorder tasks.';
+      this._items = previousItems; // Undo the optimistic move before refetching.
       await this._loadItems();
+    } finally {
+      this._savingOrder = false;
     }
   }
   private _handleDragEnd() {
     this._draggedItem = null;
-    this.shadowRoot?.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+    this._dragOverUid = null;
+  }
+  /** Briefly mark a row so the eye can follow where the task landed. */
+  private _flashMoved(uid: string) {
+    this._justMovedUid = uid;
+    setTimeout(() => { if (this._justMovedUid === uid) this._justMovedUid = null; }, 900);
   }
   private async _save() {
     const entityId = this._entity(); const task = this._task.trim();
@@ -213,14 +255,40 @@ export class HomeManagementAdminCard extends LitElement {
       <section><p class="label">WHAT KIND OF WORK?</p><div class="segmented"><button class=${this._kind === 'chores' ? 'selected' : ''} @click=${() => this._chooseKind('chores')}>CHORE</button><button class=${this._kind === 'schoolwork' ? 'selected' : ''} @click=${() => this._chooseKind('schoolwork')}>SCHOOLWORK</button></div></section>
       <section><label class="label" for="task">TASK</label><input id="task" .value=${this._task} @input=${(event: InputEvent) => this._task = (event.target as HTMLInputElement).value} @keydown=${(event: KeyboardEvent) => event.key === 'Enter' && this._save()} placeholder=${`Add a task for ${child.name}`} /><label class="checkbox-label"><input type="checkbox" .checked=${this._techTime} @change=${(e: Event) => this._techTime = (e.target as HTMLInputElement).checked} /> <span>⚡ Required for tech time</span></label></section>
       <section><p class="label">WHEN SHOULD IT APPEAR?</p><div class="schedule"><button class=${this._mode === 'today' ? 'selected' : ''} @click=${() => this._mode = 'today'}>TODAY</button><button class=${this._mode === 'date' ? 'selected' : ''} @click=${() => this._mode = 'date'}>DATE</button><button class=${this._mode === 'daily' ? 'selected' : ''} @click=${() => this._mode = 'daily'}>EVERY DAY</button><button class=${this._mode === 'weekdays' ? 'selected' : ''} @click=${() => this._mode = 'weekdays'}>WEEKLY</button></div>${this._mode === 'date' ? html`<input class="date" type="date" .value=${this._date} @input=${(event: InputEvent) => this._date = (event.target as HTMLInputElement).value} />` : nothing}${this._mode === 'weekdays' ? html`<div class="weekdays">${DAYS.map((day, index) => html`<button class=${this._days.has(day) ? 'selected' : ''} @click=${() => this._toggleDay(day)} aria-label=${day}>${SHORT_DAYS[index]}</button>`)}</div>` : nothing}</section>
-      <section class="list"><div class="list-heading"><p class="label">${child.name.toUpperCase()}’S ${this._kind.toUpperCase()} LIST</p><button class="refresh" ?disabled=${this._loadingItems} @click=${() => this._loadItems()} aria-label="Refresh task list">↻</button></div>${this._editing ? html`<form class="edit" @submit=${(event: SubmitEvent) => { event.preventDefault(); this._update(); }}><label class="label" for="edit-task">EDIT TASK</label><input id="edit-task" .value=${this._editTask} @input=${(event: InputEvent) => this._editTask = (event.target as HTMLInputElement).value} /><label class="checkbox-label"><input type="checkbox" .checked=${this._editTechTime} @change=${(e: Event) => this._editTechTime = (e.target as HTMLInputElement).checked} /> <span>⚡ Required for tech time</span></label><p class="label">WHEN SHOULD IT APPEAR?</p><div class="schedule"><button type="button" class=${this._editMode === 'today' ? 'selected' : ''} @click=${() => this._editMode = 'today'}>TODAY</button><button type="button" class=${this._editMode === 'date' ? 'selected' : ''} @click=${() => this._editMode = 'date'}>DATE</button><button type="button" class=${this._editMode === 'daily' ? 'selected' : ''} @click=${() => this._editMode = 'daily'}>EVERY DAY</button><button type="button" class=${this._editMode === 'weekdays' ? 'selected' : ''} @click=${() => this._editMode = 'weekdays'}>WEEKLY</button></div>${this._editMode === 'date' ? html`<input id="edit-date" class="date" type="date" .value=${this._editDate} @input=${(event: InputEvent) => this._editDate = (event.target as HTMLInputElement).value} />` : nothing}${this._editMode === 'weekdays' ? html`<div class="weekdays">${DAYS.map((day, index) => html`<button type="button" class=${this._editDays.has(day) ? 'selected' : ''} @click=${() => this._toggleEditDay(day)} aria-label=${day}>${SHORT_DAYS[index]}</button>`)}</div>` : nothing}<div class="edit-actions"><button class="cancel" type="button" ?disabled=${this._updating} @click=${this._cancelEdit}>CANCEL</button><button class="update" ?disabled=${this._updating}>${this._updating ? 'UPDATING…' : 'SAVE CHANGES'}</button></div></form>` : nothing}${!entity ? html`<p class="empty">No list connected.</p>` : this._loadingItems ? html`<p class="empty">Loading tasks…</p>` : currentItems.length ? html`<div class="items">${currentItems.map((item) => html`<div class="item ${item.status === 'completed' ? 'complete' : ''}" @dragover=${(e: DragEvent) => this._handleDragOver(e)} @drop=${(e: DragEvent) => this._handleDrop(e, item)}><span class="drag-handle" draggable="true" @dragstart=${(e: DragEvent) => this._handleDragStart(e, item)} @dragend=${() => this._handleDragEnd()}>⋮⋮</span><span class="item-name">${item.tech_time ? html`<span class="tech-badge-admin">⚡</span>` : nothing}${item.summary}${item.due ? html`<small>${item.due.slice(0, 10)}</small>` : nothing}</span><div class="item-actions"><button class="edit-button" ?disabled=${this._updating} @click=${() => this._startEdit(item)} aria-label=${`Edit ${item.summary}`}>EDIT</button><button class="remove" ?disabled=${this._removing === item.uid || this._updating} @click=${() => this._remove(item)} aria-label=${`Remove ${item.summary}`}>${this._removing === item.uid ? 'REMOVING…' : 'REMOVE'}</button></div></div>`)}</div>` : html`<p class="empty">No tasks in this list.</p>`}</section>
+      <section class="list"><div class="list-heading"><p class="label">${child.name.toUpperCase()}’S ${this._kind.toUpperCase()} LIST</p><button class="refresh" ?disabled=${this._loadingItems} @click=${() => this._loadItems()} aria-label="Refresh task list">↻</button></div>${this._editing ? html`<form class="edit" @submit=${(event: SubmitEvent) => { event.preventDefault(); this._update(); }}><label class="label" for="edit-task">EDIT TASK</label><input id="edit-task" .value=${this._editTask} @input=${(event: InputEvent) => this._editTask = (event.target as HTMLInputElement).value} /><label class="checkbox-label"><input type="checkbox" .checked=${this._editTechTime} @change=${(e: Event) => this._editTechTime = (e.target as HTMLInputElement).checked} /> <span>⚡ Required for tech time</span></label><p class="label">WHEN SHOULD IT APPEAR?</p><div class="schedule"><button type="button" class=${this._editMode === 'today' ? 'selected' : ''} @click=${() => this._editMode = 'today'}>TODAY</button><button type="button" class=${this._editMode === 'date' ? 'selected' : ''} @click=${() => this._editMode = 'date'}>DATE</button><button type="button" class=${this._editMode === 'daily' ? 'selected' : ''} @click=${() => this._editMode = 'daily'}>EVERY DAY</button><button type="button" class=${this._editMode === 'weekdays' ? 'selected' : ''} @click=${() => this._editMode = 'weekdays'}>WEEKLY</button></div>${this._editMode === 'date' ? html`<input id="edit-date" class="date" type="date" .value=${this._editDate} @input=${(event: InputEvent) => this._editDate = (event.target as HTMLInputElement).value} />` : nothing}${this._editMode === 'weekdays' ? html`<div class="weekdays">${DAYS.map((day, index) => html`<button type="button" class=${this._editDays.has(day) ? 'selected' : ''} @click=${() => this._toggleEditDay(day)} aria-label=${day}>${SHORT_DAYS[index]}</button>`)}</div>` : nothing}<div class="edit-actions"><button class="cancel" type="button" ?disabled=${this._updating} @click=${this._cancelEdit}>CANCEL</button><button class="update" ?disabled=${this._updating}>${this._updating ? 'UPDATING…' : 'SAVE CHANGES'}</button></div></form>` : nothing}${!entity ? html`<p class="empty">No list connected.</p>` : this._loadingItems ? html`<p class="empty">Loading tasks…</p>` : currentItems.length ? html`<div class="items ${this._savingOrder ? 'saving' : ''}">${currentItems.map((item) => html`<div class="item ${item.status === 'completed' ? 'complete' : ''} ${this._draggedItem?.uid === item.uid ? 'dragging' : ''} ${this._dragOverUid === item.uid ? 'drop-' + this._dropPosition : ''} ${this._justMovedUid === item.uid ? 'just-moved' : ''}" @dragover=${(e: DragEvent) => this._handleDragOver(e, item)} @dragleave=${(e: DragEvent) => this._handleDragLeave(e, item)} @drop=${(e: DragEvent) => this._handleDrop(e, item)}><span class="drag-handle" draggable="true" title="Drag to reorder" aria-label=${`Drag to reorder ${item.summary}`} @dragstart=${(e: DragEvent) => this._handleDragStart(e, item)} @dragend=${() => this._handleDragEnd()}><svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true"><circle cx="2.5" cy="3" r="1.35"/><circle cx="7.5" cy="3" r="1.35"/><circle cx="2.5" cy="8" r="1.35"/><circle cx="7.5" cy="8" r="1.35"/><circle cx="2.5" cy="13" r="1.35"/><circle cx="7.5" cy="13" r="1.35"/></svg></span><span class="item-name">${item.tech_time ? html`<span class="tech-badge-admin">⚡</span>` : nothing}${item.summary}${item.due ? html`<small>${item.due.slice(0, 10)}</small>` : nothing}</span><div class="item-actions"><button class="edit-button" ?disabled=${this._updating} @click=${() => this._startEdit(item)} aria-label=${`Edit ${item.summary}`}>EDIT</button><button class="remove" ?disabled=${this._removing === item.uid || this._updating} @click=${() => this._remove(item)} aria-label=${`Remove ${item.summary}`}>${this._removing === item.uid ? 'REMOVING…' : 'REMOVE'}</button></div></div>`)}</div>` : html`<p class="empty">No tasks in this list.</p>`}</section>
       ${missedItems.length ? html`<section class="list missed"><div class="list-heading"><p class="label">MISSED ${this._kind.toUpperCase()}</p><span class="missed-note">OVERDUE — PARENT ONLY</span></div><p class="missed-help">Keep it for accountability, remove it, or move this one-time task to tomorrow.</p><div class="items">${missedItems.map((item) => html`<div class="item missed-item"><span class="item-name">${item.summary}<small>DUE ${item.due?.slice(0, 10)}</small></span><div class="item-actions"><button class="move" ?disabled=${this._moving === item.uid || this._removing === item.uid} @click=${() => this._moveToTomorrow(item)} aria-label=${`Move ${item.summary} to tomorrow`}>${this._moving === item.uid ? "MOVING…" : "TOMORROW"}</button><button class="remove" ?disabled=${this._removing === item.uid || this._moving === item.uid} @click=${() => this._remove(item)} aria-label=${`Remove ${item.summary}`}>${this._removing === item.uid ? "REMOVING…" : "REMOVE"}</button></div></div>`)}</div></section>` : nothing}
       <footer><div class="status ${this._message ? 'visible' : ''}">${this._message}</div><button class="submit" ?disabled=${this._saving || !entity} @click=${this._save}>${this._saving ? 'SAVING…' : `ADD TO ${child.name.toUpperCase()}'S ${this._kind.toUpperCase()}`}</button></footer></main></ha-card>`;
   }
   static styles = [tokens, css`
     :host { display:block; color:var(--ink); font-family:var(--font-body); } ha-card { overflow:hidden; border:1px solid var(--bezel); border-radius:14px; background:var(--housing); box-shadow:0 12px 32px #0005; } main { padding:clamp(18px,3vw,28px); background:radial-gradient(circle at 92% 0%,#2d26193d,transparent 34%),var(--housing); } header { display:flex; justify-content:space-between; gap:14px; padding-bottom:20px; border-bottom:1px solid var(--hairline); } h1,p { margin:0; } h1 { font:700 clamp(25px,6vw,35px) var(--font-display); letter-spacing:.035em; } .eyebrow,.label,.badge,.schedule button,.segmented button,.submit,.remove,.edit-button,.cancel,.update { font:700 10px var(--font-mono); letter-spacing:.08em; } .eyebrow { color:var(--brass); margin-bottom:4px; } .subhead { margin-top:5px; color:var(--ink-dim); font-size:13px; } .badge { align-self:start; color:var(--brass); border:1px solid var(--brass-dim); padding:5px 8px; border-radius:4px; } section { padding:18px 0; border-bottom:1px solid var(--hairline); } .label { display:block; color:var(--ink-dim); margin-bottom:10px; } .label span { color:var(--ink-faint); } .choices,.segmented,.schedule,.weekdays { display:flex; gap:8px; flex-wrap:wrap; } button { cursor:pointer; } .choice { display:flex; align-items:center; gap:7px; padding:7px 11px 7px 8px; background:var(--well); color:var(--ink-dim); border:1px solid var(--bezel); border-radius:22px; font:600 13px var(--font-body); } .choice.selected { color:var(--ink); border-color:var(--brass-dim); background:#2b261a; } .segmented button,.schedule button { padding:9px 11px; color:var(--ink-dim); border:1px solid var(--bezel); background:var(--well); border-radius:4px; } .segmented .selected,.schedule .selected,.weekdays .selected { color:var(--housing); background:var(--brass); border-color:var(--brass); } input { box-sizing:border-box; width:100%; color:var(--ink); background:var(--well); border:1px solid var(--bezel); border-radius:5px; padding:12px; font:15px var(--font-body); outline:none; } input:focus { border-color:var(--brass-dim); } input.date { width:auto; margin-top:12px; font-family:var(--font-mono); } .weekdays { margin-top:12px; } .weekdays button { width:33px; height:33px; color:var(--ink-dim); background:var(--well); border:1px solid var(--bezel); border-radius:50%; font:700 11px var(--font-mono); } .list-heading,.item,.item-actions,.edit-actions { display:flex; align-items:center; justify-content:space-between; gap:8px; } .list-heading .label { margin-bottom:0; } .refresh { width:30px; height:30px; color:var(--brass); background:var(--well); border:1px solid var(--brass-dim); border-radius:50%; font-size:17px; } .refresh:disabled,.remove:disabled,.edit-button:disabled,.cancel:disabled,.update:disabled { cursor:not-allowed; opacity:.5; } .edit { margin-top:14px; padding:14px; background:var(--well); border:1px solid var(--bezel); border-radius:5px; } .edit .label:not(:first-child) { margin-top:14px; } .edit .date { margin-top:0; margin-bottom:14px; } .edit-actions { justify-content:flex-end; margin-top:14px; } .cancel,.edit-button { color:var(--ink-dim); background:transparent; border:1px solid var(--bezel); border-radius:4px; padding:6px 8px; } .update { color:#18150e; background:var(--brass); border:1px solid var(--brass); border-radius:4px; padding:7px 9px; } .items { margin-top:10px; border-top:1px solid var(--hairline); } .item { padding:10px 0; border-bottom:1px solid var(--hairline); font-size:14px; } .item-name { min-width:0; } .item-name small { display:block; margin-top:3px; color:var(--brass-dim); font:700 9px var(--font-mono); letter-spacing:.08em; } .item.complete .item-name { color:var(--ink-faint); text-decoration:line-through; } .item-actions { flex:0 0 auto; } .move { color:var(--brass); background:transparent; border:1px solid var(--brass-dim); border-radius:4px; padding:6px 8px; font:700 10px var(--font-mono); letter-spacing:.08em; } .move:disabled { cursor:not-allowed; opacity:.5; } .missed { border-left:3px solid var(--needle); } .missed-note { color:var(--needle); font:700 9px var(--font-mono); letter-spacing:.08em; } .missed-help { margin:10px 0; color:var(--ink-dim); font-size:12px; } .missed-item .item-name small { color:var(--needle); } .remove { color:var(--needle); background:transparent; border:1px solid color-mix(in srgb, var(--needle) 55%, var(--bezel)); border-radius:4px; padding:6px 8px; } .empty { margin-top:10px; color:var(--ink-faint); font-size:13px; } footer { padding-top:18px; } .status { min-height:19px; margin-bottom:9px; color:var(--ledger); font-size:12px; opacity:0; } .status.visible { opacity:1; } .submit { width:100%; padding:14px; color:#18150e; background:var(--brass); border:0; border-radius:5px; } .submit:disabled { cursor:not-allowed; opacity:.45; }
     .checkbox-label { display:flex; align-items:center; gap:8px; margin-top:12px; color:var(--ink-dim); font-size:13px; cursor:pointer; } .checkbox-label input[type="checkbox"] { width:auto; cursor:pointer; accent-color:var(--brass); } .checkbox-label span { color:var(--ink); } .tech-badge-admin { display:inline-block; padding:2px 5px; margin-right:6px; background:color-mix(in srgb, var(--brass) 20%, transparent); color:var(--brass); border:1px solid var(--brass); border-radius:3px; font-size:9px; }
-    .item.dragging { opacity:0.5; } .drag-handle { color:var(--ink-faint); font-size:12px; margin-right:6px; flex-shrink:0; cursor:grab; user-select:none; } .drag-handle:active { cursor:grabbing; }
+    /* Drag-to-reorder. The row is the drop target; only the handle starts a drag,
+       so the EDIT/REMOVE buttons stay clickable. */
+    .items { position:relative; }
+    .item { position:relative; border-radius:6px; transition:background .16s ease, box-shadow .16s ease, opacity .16s ease, transform .16s ease; }
+    .drag-handle { display:flex; align-items:center; justify-content:center; width:22px; height:26px; margin-right:4px; flex-shrink:0; border-radius:4px; color:var(--ink-faint); cursor:grab; user-select:none; -webkit-user-select:none; touch-action:none; transition:color .16s ease, background .16s ease; }
+    .drag-handle svg { fill:currentColor; pointer-events:none; }
+    .item:hover { background:#ffffff08; }
+    .item:hover .drag-handle { color:var(--brass); background:#ffffff0d; }
+    .drag-handle:active { cursor:grabbing; color:var(--brass); background:#ffffff14; }
+    .drag-handle:focus-visible { outline:2px solid var(--brass); outline-offset:1px; }
+    /* The row in flight: dimmed and slightly shrunk so it reads as "lifted out". */
+    .item.dragging { opacity:.4; transform:scale(.99); background:#ffffff08; }
+    .item.dragging .item-actions { visibility:hidden; }
+    /* Insertion line on the edge the task would land on, with a brass cap at the
+       left so the target is legible even against a busy row. */
+    .item.drop-before::before, .item.drop-after::after { content:''; position:absolute; left:0; right:0; height:2px; background:var(--brass); border-radius:2px; box-shadow:0 0 7px var(--brass); }
+    .item.drop-before::before { top:-1px; }
+    .item.drop-after::after { bottom:-1px; }
+    .item.drop-before, .item.drop-after { background:#ffffff0a; }
+    /* Confirmation pulse on the row that just landed. */
+    .item.just-moved { animation:landed .9s ease-out; }
+    @keyframes landed { 0% { background:color-mix(in srgb, var(--brass) 30%, transparent); box-shadow:inset 0 0 0 1px var(--brass-dim); } 100% { background:transparent; box-shadow:none; } }
+    /* Block further drags while the new order is being written to HA, so a second
+       drag cannot race the in-flight service calls. */
+    .items.saving { pointer-events:none; }
+    .items.saving .drag-handle { opacity:.4; cursor:progress; }
+    @media (prefers-reduced-motion:reduce) { .item, .drag-handle { transition:none; } .item.just-moved { animation:none; } }
     .list:has(.edit) .items { pointer-events:none; user-select:none; opacity:.3; } .edit { position:fixed; z-index:1000; top:50%; left:50%; box-sizing:border-box; width:min(560px,calc(100vw - 40px)); max-height:calc(100vh - 40px); overflow:auto; margin:0; padding:20px; transform:translate(-50%,-50%); background:var(--housing); border-color:var(--brass-dim); border-radius:10px; box-shadow:0 20px 60px #000a; isolation:isolate; } .edit::before { content:''; position:fixed; z-index:-1; inset:0; background:#000a; } .edit .label:first-child { color:var(--brass); } .edit .edit-actions { margin-top:20px; }
   `];
 }
